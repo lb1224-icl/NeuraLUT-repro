@@ -49,8 +49,8 @@ class SparseLinearNeq(nn.Module):
         self.out_features = out_features
         self.input_quant = input_quant
         self.output_quant = output_quant
-        self.neq.input_quant.float_output()
-        self.neq.output_quant.float_output()
+        self.input_quant.float_output()
+        self.output_quant.float_output()
         self.imask = imask
         self.support = support
         self.dense_forward = dense_forward

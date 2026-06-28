@@ -100,3 +100,79 @@ assign {input_string}w = {input_string};\n"""
                                                 input_bits_1=input_bits-1,
                                                 output_string=output_string,
                                                 output_bits_1=output_bits-1)
+
+def generate_logicnets_verilog(module_name: str, input_name: str, input_bits: int, output_name: str, output_bits: int, module_contents: str) -> str:
+    return f"""\
+module {module_name} (input [{input_bits-1}:0] {input_name}, input clk, input rst, output[{output_bits-1}:0] {output_name});
+{module_contents}
+endmodule\n"""
+
+
+def generate_register_verilog(module_name="myreg", param_name="DataWidth", input_name="data_in", output_name="data_out") -> str:
+    return f"""\
+module {module_name} #(parameter {param_name}=16) (
+    input [{param_name}-1:0] {input_name},
+    input wire clk,
+    input wire rst,
+    output reg [{param_name}-1:0] {output_name}
+    );
+    always@(posedge clk) begin
+    if(!rst)
+        {output_name}<={input_name};
+    else
+        {output_name}<=0;
+    end
+endmodule\n
+"""
+
+
+def module_list_to_verilog_module(
+    module_list,
+    module_name: str,
+    output_directory: str,
+    add_registers: bool = False,
+    generate_bench: bool = False,
+) -> None:
+    from .bench import BenchGenerator
+
+    input_bitwidth = None
+    output_bitwidth = None
+    module_contents = ""
+
+    for i, layer in enumerate(module_list):
+        if not isinstance(layer, LUTLayer):
+            raise TypeError(f"Expected LUTLayer, got {type(layer)}")
+        prefix = f"layer{i}"
+        gen = VerilogGenerator(layer)
+        layer_input_bits, layer_output_bits = gen.generate(prefix, output_directory)
+
+        if i == 0:
+            input_bitwidth = layer_input_bits
+        if i == len(module_list) - 1:
+            output_bitwidth = layer_output_bits
+
+        module_contents += layer_connection_verilog(
+            layer_string=prefix,
+            input_string=f"M{i}",
+            input_bits=layer_input_bits,
+            output_string=f"M{i+1}",
+            output_bits=layer_output_bits,
+            output_wire=i != len(module_list) - 1,
+            register=add_registers,
+        )
+
+        if generate_bench:
+            BenchGenerator(layer).generate(prefix, output_directory)
+
+    with open(f"{output_directory}/myreg.v", "w") as f:
+        f.write(generate_register_verilog())
+
+    with open(f"{output_directory}/{module_name}.v", "w") as f:
+        f.write(generate_logicnets_verilog(
+            module_name=module_name,
+            input_name="M0",
+            input_bits=input_bitwidth,
+            output_name=f"M{len(module_list)}",
+            output_bits=output_bitwidth,
+            module_contents=module_contents,
+        ))
