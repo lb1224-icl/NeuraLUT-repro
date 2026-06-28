@@ -14,9 +14,9 @@ class SparseLinear(nn.Linear):
         out_features: int,
         bias: bool = True,
     ) -> None:
-        super(SparseLinear, self).__init__(
-            in_features=in_features, out_features=out_features, bias=bias
-        )
+        super(SparseLinear, self).__init__(in_features=in_features, out_features=out_features, bias=bias)
+
+        # initialise the weight matrix with random values
         nn.init.kaiming_uniform_(self.weight, nonlinearity='relu')
 
     def forward(self, input: Tensor) -> Tensor:
@@ -145,6 +145,7 @@ class LUTLayer(nn.Module):
                 for n in range(self.neq.out_features)
             ]
 
+    # look up inference using the truth tables
     def forward(self, x: Tensor) -> Tensor:
         assert self.neuron_truth_tables is not None, "Call calculate_truth_tables() first"
         self.neq.input_quant.bin_output()
@@ -155,6 +156,7 @@ class LUTLayer(nn.Module):
             y[:, i] = self._table_lookup(x[:, indices], int_perm, bin_out)
         return y
     
+    # called by calculate_truth_tables() to fill the tree with outputs given an input tensor for every possible combination of inputs
     def forward_to_fill_luts(self, x: Tensor) -> Tensor:
         # x is [num_combos, fan_in] — already shaped per neuron, no imask needed
         x = x.repeat(1, self.neq.out_features).reshape(x.shape[0], self.neq.out_features, self.neq.fan_in)
@@ -167,6 +169,7 @@ class LUTLayer(nn.Module):
         x = x + residual
         return x
 
+    # look up inference using the truth tables
     def _table_lookup(
         self,
         connected_input: Tensor,
@@ -185,11 +188,11 @@ class LUTLayer(nn.Module):
 
         idx = torch.argmax(eq.to(torch.int64), dim=1)
         return bin_out[idx]
-    
+
+# Tuples inputs into pairs 
 def SupportMask(out_features: int, fan_in: int):
     imask = torch.arange(out_features).reshape([out_features//fan_in,fan_in])
     return imask
-
 
 class ScalarScaleBias(nn.Module):
     def __init__(self, scale=True, scale_init=1.0, bias=True, bias_init=0.0) -> None:

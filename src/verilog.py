@@ -125,7 +125,7 @@ module {module_name} #(parameter {param_name}=16) (
 endmodule\n
 """
 
-
+# Function to generate a Verilog module that connects multiple LUTLayer modules in sequence, with optional registers and bench file generation
 def module_list_to_verilog_module(
     module_list,
     module_name: str,
