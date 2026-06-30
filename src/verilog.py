@@ -1,5 +1,6 @@
-from .nn import SparseLinearNeq
 from .nn import LUTLayer
+from .verilog_templates import *
+from .bench import BenchGenerator
 
 class VerilogGenerator:
     def __init__(self, layer: LUTLayer) -> None:
@@ -55,76 +56,6 @@ class VerilogGenerator:
             lut_string += f"\t\t\t{cat_input_bw}'b{entry}: M1r = {output_bw}'b{result};\n"
         return generate_lut_verilog(module_name, cat_input_bw, output_bw, lut_string)
     
-def generate_neuron_connection_verilog(input_indices, input_bitwidth):
-    connection_string = ""
-    for i in range(len(input_indices)):
-        index = input_indices[i]
-        offset = index*input_bitwidth
-        for b in reversed(range(input_bitwidth)):
-            connection_string += f"M0[{offset+b}]"
-            if not (i == len(input_indices)-1 and b == 0):
-                connection_string += ", "
-    return connection_string
-
-def generate_lut_verilog(module_name, input_fanin_bits, output_bits, lut_string):
-    lut_neuron_template = """\
-module {module_name} ( input [{input_fanin_bits_1:d}:0] M0, output [{output_bits_1:d}:0] M1 );
-
-	(*rom_style = "distributed" *) reg [{output_bits_1:d}:0] M1r;
-	assign M1 = M1r;
-	always @ (M0) begin
-		case (M0)
-{lut_string}
-		endcase
-	end
-endmodule\n"""
-    return lut_neuron_template.format(  module_name=module_name,
-                                        input_fanin_bits_1=input_fanin_bits-1,
-                                        output_bits_1=output_bits-1,
-                                        lut_string=lut_string)
-
-def layer_connection_verilog(layer_string: str, input_string: str, input_bits: int, output_string: str, output_bits: int, output_wire=True, register=False):
-    if register:
-        layer_connection_template = """\
-wire [{input_bits_1:d}:0] {input_string}w;
-myreg #(.DataWidth({input_bits})) {layer_string}_reg (.data_in({input_string}), .clk(clk), .rst(rst), .data_out({input_string}w));\n"""
-    else:
-        layer_connection_template = """\
-wire [{input_bits_1:d}:0] {input_string}w;
-assign {input_string}w = {input_string};\n"""
-    layer_connection_template += "wire [{output_bits_1:d}:0] {output_string};\n" if output_wire else ""
-    layer_connection_template += "{layer_string} {layer_string}_inst (.M0({input_string}w), .M1({output_string}));\n"
-    return layer_connection_template.format(    layer_string=layer_string,
-                                                input_string=input_string,
-                                                input_bits=input_bits,
-                                                input_bits_1=input_bits-1,
-                                                output_string=output_string,
-                                                output_bits_1=output_bits-1)
-
-def generate_logicnets_verilog(module_name: str, input_name: str, input_bits: int, output_name: str, output_bits: int, module_contents: str) -> str:
-    return f"""\
-module {module_name} (input [{input_bits-1}:0] {input_name}, input clk, input rst, output[{output_bits-1}:0] {output_name});
-{module_contents}
-endmodule\n"""
-
-
-def generate_register_verilog(module_name="myreg", param_name="DataWidth", input_name="data_in", output_name="data_out") -> str:
-    return f"""\
-module {module_name} #(parameter {param_name}=16) (
-    input [{param_name}-1:0] {input_name},
-    input wire clk,
-    input wire rst,
-    output reg [{param_name}-1:0] {output_name}
-    );
-    always@(posedge clk) begin
-    if(!rst)
-        {output_name}<={input_name};
-    else
-        {output_name}<=0;
-    end
-endmodule\n
-"""
-
 # Function to generate a Verilog module that connects multiple LUTLayer modules in sequence, with optional registers and bench file generation
 def module_list_to_verilog_module(
     module_list,
@@ -133,7 +64,6 @@ def module_list_to_verilog_module(
     add_registers: bool = False,
     generate_bench: bool = False,
 ) -> None:
-    from .bench import BenchGenerator
 
     input_bitwidth = None
     output_bitwidth = None
@@ -143,8 +73,8 @@ def module_list_to_verilog_module(
         if not isinstance(layer, LUTLayer):
             raise TypeError(f"Expected LUTLayer, got {type(layer)}")
         prefix = f"layer{i}"
-        gen = VerilogGenerator(layer)
-        layer_input_bits, layer_output_bits = gen.generate(prefix, output_directory)
+        vgen = VerilogGenerator(layer)
+        layer_input_bits, layer_output_bits = vgen.generate(prefix, output_directory)
 
         if i == 0:
             input_bitwidth = layer_input_bits
@@ -162,7 +92,8 @@ def module_list_to_verilog_module(
         )
 
         if generate_bench:
-            BenchGenerator(layer).generate(prefix, output_directory)
+            bgen = BenchGenerator(layer)
+            bgen.generate(prefix, output_directory)
 
     with open(f"{output_directory}/myreg.v", "w") as f:
         f.write(generate_register_verilog())

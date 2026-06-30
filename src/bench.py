@@ -40,7 +40,7 @@ class BenchGenerator:
             lut_string += generate_lut_input_string(cat_input_bw)
 
         return generate_lut_bench(cat_input_bw, output_bw, lut_string)
-
+    
 def generate_lut_bench(input_fanin_bits, output_bits, lut_string):
     lut_neuron_template = """\
 {input_string}\
